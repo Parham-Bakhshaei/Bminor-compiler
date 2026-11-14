@@ -8,7 +8,7 @@ bool isSpace(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
 }
 
-}  // namespace
+}  
 
 Lexer::Lexer(const std::string& source, const std::string& filename)
     : src_(source), file_(filename) {}
@@ -49,6 +49,8 @@ Token Lexer::nextToken() {
     if (isSpace(c)) return scanWhitespace(startPos, start);
     if (isLetter(c)) return scanWord(startPos, start);
     if (isDigit(c)) return scanNumber(startPos, start);
+    if (c == '"') return scanString(startPos, start);
+    if (c == '\'') return scanChar(startPos, start);
     return scanOperator(startPos, start);
 }
 
@@ -57,9 +59,7 @@ Token Lexer::scanWhitespace(size_t startPos, const Location& start) {
     return make(TokenType::WHITESPACE, startPos, start);
 }
 
-// Longest match first: read the whole word, THEN decide what it is.
-// This is how "keyword before identifier" works: "return" is a keyword,
-// but "returned" is read completely and stays an identifier.
+
 Token Lexer::scanWord(size_t startPos, const Location& start) {
     while (!atEnd() && (isLetter(peek()) || isDigit(peek()))) advance();
     Token t = make(TokenType::IDENT, startPos, start);
@@ -71,17 +71,60 @@ Token Lexer::scanWord(size_t startPos, const Location& start) {
     return t;
 }
 
-// Integers have no sign here: '-' is always an operator (see the spec).
+
 Token Lexer::scanNumber(size_t startPos, const Location& start) {
     while (!atEnd() && isDigit(peek())) advance();
     return make(TokenType::INT_LIT, startPos, start);
 }
 
-// Operators and delimiters. Two-character operators are tried first, so
-// "<=" is one token and not '<' followed by '='.
+Token Lexer::scanString(size_t startPos, const Location& start) {
+    advance();   // opening quote
+    bool closed = false;
+    while (!atEnd() && peek() != '\n') {
+        char c = advance();
+        if (c == '"') {
+            closed = true;
+            break;
+        }
+        if (c == '\\' && !atEnd() && peek() != '\n') advance();  
+    }
+    if (!closed) {
+        report(start, "unterminated string literal");
+        return make(TokenType::INVALID, startPos, start);
+    }
+    return make(TokenType::STRING_LIT, startPos, start);
+}
+
+
+Token Lexer::scanChar(size_t startPos, const Location& start) {
+    advance();   
+
+    if (peek() == '\'') {               
+        advance();
+        report(start, "empty character literal");
+        return make(TokenType::INVALID, startPos, start);
+    }
+
+    bool closed = false;
+    if (!atEnd() && peek() != '\n') {
+        char c = advance();
+        if (c == '\\' && !atEnd() && peek() != '\n') advance();   
+        if (peek() == '\'') {
+            advance();
+            closed = true;
+        }
+    }
+    if (!closed) {
+        report(start, "malformed or unterminated character literal");
+        return make(TokenType::INVALID, startPos, start);
+    }
+    return make(TokenType::CHAR_LIT, startPos, start);
+}
+
+
 Token Lexer::scanOperator(size_t startPos, const Location& start) {
     char c = advance();
-    char n = peek();   // '\0' at the end of input
+    char n = peek();   
 
     switch (c) {
         case '(': return make(TokenType::LPAREN, startPos, start);
@@ -123,8 +166,7 @@ Token Lexer::scanOperator(size_t startPos, const Location& start) {
             break;
     }
 
-    // Error recovery: report the character, emit INVALID and keep going.
-    // A multi-byte UTF-8 character is kept together in one INVALID token.
+
     while (!atEnd() && (static_cast<unsigned char>(peek()) & 0xC0) == 0x80) advance();
     Token bad = make(TokenType::INVALID, startPos, start);
     report(start, "invalid character '" + bad.lexeme + "'");
