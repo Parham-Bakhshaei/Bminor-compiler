@@ -9,7 +9,6 @@
 
 class Parser {
 public:
-
     explicit Parser(const std::vector<Token>& tokens);
 
     NodePtr parseProgram();
@@ -17,9 +16,9 @@ public:
     const std::vector<Diagnostic>& errors() const { return errors_; }
 
 private:
-    struct ParseError {};
-
-    const Token& peek(size_t offset = 0) const;
+    struct ParseError {};   
+    const Token& peek(size_t offset = 0) const;   
+    const Token& previous() const;                
     const Token& advance();
     bool atEnd() const { return peek().type == TokenType::END_OF_FILE; }
     bool check(TokenType type) const { return peek().type == type; }
@@ -30,8 +29,11 @@ private:
     bool matchKeyword(const std::string& word);
     const Token& expect(TokenType type, const std::string& what);
 
-    void errorAt(const Token& token, const std::string& message);
-    [[noreturn]] void fail(const Token& token, const std::string& message);
+    void errorAt(const Token& token, const std::string& message);            
+    [[noreturn]] void fail(const Token& token, const std::string& message); 
+    bool atSyncPoint() const;
+    void synchronize();
+    void recover(size_t constructStart);
 
     NodePtr parseDeclaration();
     NodePtr parseType();
@@ -49,7 +51,7 @@ private:
 
     NodePtr parseExpr();
     NodePtr parseAssignment();
-    NodePtr parseBinary(size_t level);
+    NodePtr parseBinary(size_t level); 
     NodePtr parsePower();
     NodePtr parseUnary();
     NodePtr parsePostfix();
@@ -58,4 +60,5 @@ private:
     std::vector<Token> tokens_;
     size_t pos_ = 0;
     std::vector<Diagnostic> errors_;
+    size_t syncPos_ = static_cast<size_t>(-1);  
 };

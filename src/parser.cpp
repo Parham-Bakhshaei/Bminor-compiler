@@ -1,30 +1,33 @@
 #include "parser.h"
 
 namespace {
-
 std::string found(const Token& token) {
     if (token.type == TokenType::END_OF_FILE) return "end of file";
     return "'" + token.lexeme + "'";
 }
 
-}
+} 
 
 Parser::Parser(const std::vector<Token>& tokens) {
     for (const Token& t : tokens) {
         if (isTrivia(t.type) || t.type == TokenType::INVALID) continue;
         tokens_.push_back(t);
     }
-
     if (tokens_.empty() || tokens_.back().type != TokenType::END_OF_FILE) {
         Location where = tokens_.empty() ? Location{} : tokens_.back().loc;
         tokens_.push_back(Token{TokenType::END_OF_FILE, "", where});
     }
 }
 
+
 const Token& Parser::peek(size_t offset) const {
     size_t i = pos_ + offset;
     if (i >= tokens_.size()) i = tokens_.size() - 1;
     return tokens_[i];
+}
+
+const Token& Parser::previous() const {
+    return tokens_[pos_ > 0 ? pos_ - 1 : 0];
 }
 
 const Token& Parser::advance() {
@@ -66,6 +69,7 @@ const Token& Parser::expect(TokenType type, const std::string& what) {
 }
 
 void Parser::errorAt(const Token& token, const std::string& message) {
+    if (pos_ == syncPos_) return;
     errors_.push_back({"syntax", token.loc, message});
 }
 
@@ -74,14 +78,39 @@ void Parser::fail(const Token& token, const std::string& message) {
     throw ParseError{};
 }
 
+bool Parser::atSyncPoint() const {
+    const Token& t = peek();
+    if (t.type == TokenType::LBRACE || t.type == TokenType::RBRACE) return true;
+    if (t.type == TokenType::KEYWORD) {
+        return t.lexeme == "if" || t.lexeme == "for" || t.lexeme == "while" ||
+               t.lexeme == "print" || t.lexeme == "return";
+    }
+    return t.type == TokenType::IDENT && peek(1).type == TokenType::COLON;
+}
+
+void Parser::synchronize() {
+    while (!atEnd()) {
+        if (previous().type == TokenType::SEMI) return;
+        if (atSyncPoint()) return;
+        advance();
+    }
+}
+
+void Parser::recover(size_t constructStart) {
+    synchronize();
+    if (pos_ == constructStart && !atEnd()) advance();
+    syncPos_ = pos_;
+}
+
 NodePtr Parser::parseProgram() {
     NodePtr program = makeNode(NodeKind::Program, "", peek().loc);
-    try {
-        while (!atEnd()) {
+    while (!atEnd()) {
+        size_t start = pos_;
+        try {
             program->add(parseDeclaration());
+        } catch (const ParseError&) {
+            recover(start);
         }
-    } catch (const ParseError&) {
-
     }
     return program;
 }
@@ -96,7 +125,7 @@ NodePtr Parser::parseDeclaration() {
     if (type->kind == NodeKind::FuncType) {
         NodePtr func = makeNode(NodeKind::FuncDecl, name.lexeme, name.loc);
         func->add(std::move(type));
-        if (match(TokenType::SEMI)) return func;
+        if (match(TokenType::SEMI)) return func;  
         expect(TokenType::ASSIGN, "'=' or ';' after the function type");
         func->add(parseBlock());
         return func;
@@ -120,14 +149,14 @@ NodePtr Parser::parseType() {
         NodePtr size;
         if (!check(TokenType::RBRACKET)) size = parseExpr();
         expect(TokenType::RBRACKET, "']' in the array type");
-        node->add(parseType());
+        node->add(parseType()); 
         if (size) node->add(std::move(size));
         return node;
     }
 
     if (matchKeyword("function")) {
         NodePtr node = makeNode(NodeKind::FuncType, "", first.loc);
-        node->add(parseType());
+        node->add(parseType());                 
         expect(TokenType::LPAREN, "'(' after the return type");
         if (!check(TokenType::RPAREN)) {
             do {
@@ -169,6 +198,7 @@ NodePtr Parser::parseArrayInit() {
 NodePtr Parser::parseStatement() {
     if (check(TokenType::LBRACE)) return parseBlock();
 
+
     if (check(TokenType::IDENT) && peek(1).type == TokenType::COLON) return parseDeclaration();
 
     if (checkKeyword("if")) return parseIf();
@@ -183,9 +213,16 @@ NodePtr Parser::parseBlock() {
     const Token& open = expect(TokenType::LBRACE, "'{'");
     NodePtr block = makeNode(NodeKind::Block, "", open.loc);
     while (!check(TokenType::RBRACE) && !atEnd()) {
-        block->add(parseStatement());
+        size_t start = pos_;
+        try {
+            block->add(parseStatement());
+        } catch (const ParseError&) {
+            recover(start);
+        }
     }
-    expect(TokenType::RBRACE, "'}' to close the block");
+    if (!match(TokenType::RBRACE)) {
+        errorAt(peek(), "expected '}' to close the block, got " + found(peek()));
+    }
     return block;
 }
 
@@ -261,12 +298,12 @@ NodePtr Parser::parseExprStatement() {
 
 NodePtr Parser::parseExpr() { return parseAssignment(); }
 
+
 NodePtr Parser::parseAssignment() {
     NodePtr left = parseBinary(0);
     if (check(TokenType::ASSIGN)) {
         const Token& equals = advance();
         NodePtr value = parseAssignment();
-
         if (left->kind != NodeKind::Identifier && left->kind != NodeKind::IndexExpr) {
             errorAt(equals, "invalid assignment target");
         }
@@ -277,6 +314,7 @@ NodePtr Parser::parseAssignment() {
     }
     return left;
 }
+
 
 NodePtr Parser::parseBinary(size_t level) {
     static const std::vector<std::vector<std::string>> levels = {
@@ -345,6 +383,7 @@ NodePtr Parser::parsePostfix() {
     return expr;
 }
 
+
 NodePtr Parser::parsePrimary() {
     const Token& tok = peek();
     switch (tok.type) {
@@ -363,7 +402,7 @@ NodePtr Parser::parsePrimary() {
 
         case TokenType::IDENT: {
             advance();
-            if (match(TokenType::LPAREN)) {
+            if (match(TokenType::LPAREN)) {   
                 NodePtr call = makeNode(NodeKind::CallExpr, tok.lexeme, tok.loc);
                 if (!check(TokenType::RPAREN)) {
                     do {
@@ -378,7 +417,7 @@ NodePtr Parser::parsePrimary() {
 
         case TokenType::LPAREN: {
             advance();
-            NodePtr inner = parseExpr();
+            NodePtr inner = parseExpr();    
             expect(TokenType::RPAREN, "')' to close the parenthesis");
             return inner;
         }
