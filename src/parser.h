@@ -40,6 +40,9 @@ private:
 
     NodePtr parseStatement();
     NodePtr parseBlock();
+    NodePtr parseIf();
+    NodePtr parseFor();
+    NodePtr parseWhile();
     NodePtr parseReturn();
     NodePtr parsePrint();
     NodePtr parseExprStatement();

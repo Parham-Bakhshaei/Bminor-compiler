@@ -1,6 +1,7 @@
 #include "parser.h"
 
 namespace {
+
 std::string found(const Token& token) {
     if (token.type == TokenType::END_OF_FILE) return "end of file";
     return "'" + token.lexeme + "'";
@@ -170,6 +171,9 @@ NodePtr Parser::parseStatement() {
 
     if (check(TokenType::IDENT) && peek(1).type == TokenType::COLON) return parseDeclaration();
 
+    if (checkKeyword("if")) return parseIf();
+    if (checkKeyword("for")) return parseFor();
+    if (checkKeyword("while")) return parseWhile();
     if (checkKeyword("return")) return parseReturn();
     if (checkKeyword("print")) return parsePrint();
     return parseExprStatement();
@@ -183,6 +187,48 @@ NodePtr Parser::parseBlock() {
     }
     expect(TokenType::RBRACE, "'}' to close the block");
     return block;
+}
+
+NodePtr Parser::parseIf() {
+    const Token& keyword = advance();
+    NodePtr node = makeNode(NodeKind::IfStmt, "", keyword.loc);
+    expect(TokenType::LPAREN, "'(' after 'if'");
+    node->add(parseExpr());
+    expect(TokenType::RPAREN, "')' after the condition");
+    node->add(parseStatement());
+    if (matchKeyword("else")) node->add(parseStatement());
+    return node;
+}
+
+NodePtr Parser::parseFor() {
+    const Token& keyword = advance();
+    NodePtr node = makeNode(NodeKind::ForStmt, "", keyword.loc);
+    expect(TokenType::LPAREN, "'(' after 'for'");
+
+    if (check(TokenType::SEMI)) node->add(makeNode(NodeKind::Empty, "", peek().loc));
+    else node->add(parseExpr());
+    expect(TokenType::SEMI, "';' after the for-loop initializer");
+
+    if (check(TokenType::SEMI)) node->add(makeNode(NodeKind::Empty, "", peek().loc));
+    else node->add(parseExpr());
+    expect(TokenType::SEMI, "';' after the for-loop condition");
+
+    if (check(TokenType::RPAREN)) node->add(makeNode(NodeKind::Empty, "", peek().loc));
+    else node->add(parseExpr());
+    expect(TokenType::RPAREN, "')' after the for-loop header");
+
+    node->add(parseStatement());
+    return node;
+}
+
+NodePtr Parser::parseWhile() {
+    const Token& keyword = advance();
+    NodePtr node = makeNode(NodeKind::WhileStmt, "", keyword.loc);
+    expect(TokenType::LPAREN, "'(' after 'while'");
+    node->add(parseExpr());
+    expect(TokenType::RPAREN, "')' after the condition");
+    node->add(parseStatement());
+    return node;
 }
 
 NodePtr Parser::parseReturn() {
@@ -233,7 +279,6 @@ NodePtr Parser::parseAssignment() {
 }
 
 NodePtr Parser::parseBinary(size_t level) {
-
     static const std::vector<std::vector<std::string>> levels = {
         {"||"},
         {"&&"},
