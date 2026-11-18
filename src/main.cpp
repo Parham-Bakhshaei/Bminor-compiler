@@ -4,6 +4,7 @@
 #include <string>
 
 #include "ast.h"
+#include "highlighter.h"
 #include "lexer.h"
 #include "parser.h"
 
@@ -30,23 +31,32 @@ bool readFile(const std::string& path, std::string& out) {
 }
 
 void usage() {
-    std::cerr << "usage: bminor (--tokens | --ast) <file.bminor>\n";
+    std::cerr <<
+        "usage: bminor [options] <file.bminor>\n"
+        "  --tokens            print the token stream\n"
+        "  --ast               print the syntax tree\n"
+        "  --highlight=ansi    colored source for the terminal (default)\n"
+        "  --highlight=html    standalone HTML page\n"
+        "  --highlight=plain   the source without colors\n"
+        "  -o <file>           write the output to a file instead of stdout\n";
 }
 
-void printTokens(const std::vector<Token>& tokens) {
+void printTokens(const std::vector<Token>& tokens, std::ostream& out) {
     for (const Token& t : tokens) {
         if (t.type == TokenType::WHITESPACE) continue;
-        std::cout << t.loc.line << ":" << t.loc.col << "\t" << tokenTypeName(t.type)
-                  << "\t" << escapeNewlines(t.lexeme) << "\n";
+        out << t.loc.line << ":" << t.loc.col << "\t" << tokenTypeName(t.type)
+            << "\t" << escapeNewlines(t.lexeme) << "\n";
     }
 }
 
-}
+}  
 
 int main(int argc, char** argv) {
-    enum class Mode { None, Tokens, Ast };
-    Mode mode = Mode::None;
+    enum class Mode { Tokens, Ast, Highlight };
+    Mode mode = Mode::Highlight;
+    Format format = Format::Ansi;
     std::string path;
+    std::string outputPath;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -54,6 +64,17 @@ int main(int argc, char** argv) {
             mode = Mode::Tokens;
         } else if (arg == "--ast") {
             mode = Mode::Ast;
+        } else if (arg == "--highlight=ansi") {
+            mode = Mode::Highlight;
+            format = Format::Ansi;
+        } else if (arg == "--highlight=html") {
+            mode = Mode::Highlight;
+            format = Format::Html;
+        } else if (arg == "--highlight=plain") {
+            mode = Mode::Highlight;
+            format = Format::PlainText;
+        } else if (arg == "-o" && i + 1 < argc) {
+            outputPath = argv[++i];
         } else if (!arg.empty() && arg[0] == '-') {
             usage();
             return 2;
@@ -61,7 +82,7 @@ int main(int argc, char** argv) {
             path = arg;
         }
     }
-    if (mode == Mode::None || path.empty()) {
+    if (path.empty()) {
         usage();
         return 2;
     }
@@ -72,20 +93,39 @@ int main(int argc, char** argv) {
         return 2;
     }
 
+
     Lexer lexer(source, path);
     std::vector<Token> tokens = lexer.tokenize();
     std::vector<Diagnostic> errors = lexer.errors();
 
+    std::ostringstream out;
     if (mode == Mode::Tokens) {
-        printTokens(tokens);
+        printTokens(tokens, out);
     } else {
         Parser parser(tokens);
         NodePtr program = parser.parseProgram();
-        dumpAst(*program, std::cout);
         errors.insert(errors.end(), parser.errors().begin(), parser.errors().end());
+
+        if (mode == Mode::Ast) {
+            dumpAst(*program, out);
+        } else {
+            Highlighter highlighter;
+            highlighter.analyze(*program);
+            out << highlighter.render(tokens, format, path);
+        }
     }
 
-    std::cout << std::flush;
+    if (outputPath.empty()) {
+        std::cout << out.str() << std::flush;
+    } else {
+        std::ofstream file(outputPath, std::ios::binary);
+        if (!file) {
+            std::cerr << "bminor: cannot write '" << outputPath << "'\n";
+            return 2;
+        }
+        file << out.str();
+    }
+
     for (const Diagnostic& d : errors) {
         std::cerr << formatDiagnostic(d) << "\n";
     }
