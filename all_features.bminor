@@ -1,0 +1,110 @@
+// ============================================================
+//  B-Minor feature test: one valid program that uses everything
+//  سلام! کامنت فارسی هم باید سالم بماند
+// ============================================================
+
+/* A block comment
+   over two lines, with a fake // inside and a * star */
+
+// ---------- variables and literals ----------
+count: integer = 42;
+price: integer;
+half: integer = 10 / 2;
+flag: boolean = true;
+off: boolean = false;
+letter: char = 'a';
+newline: char = '\n';
+quote: char = '\'';
+name: string = "B-Minor";
+msg: string = "line1\nline2 \"quoted\"";
+url: string = "http://not-a-comment";
+guess: auto = 7;
+
+// names that look like keywords but are identifiers
+returned: integer = 1;
+iffy: integer = 2;
+_private: integer = 3;
+x1: integer = 4;
+
+// ---------- arrays ----------
+primes: array [5] integer = {2, 3, 5, 7, 11};
+grid: array [2] array [3] integer = { {1, 2, 3}, {4, 5, 6} };
+unsized: array [] char;
+
+// ---------- prototype and functions ----------
+power: function integer (base: integer, exp: integer);
+
+factorial: function integer (n: integer) = {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);
+}
+
+isEven: function boolean (n: integer) = {
+    return n % 2 == 0;
+}
+
+max: function integer (a: integer, b: integer) = {
+    if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+sum: function integer (values: array [] integer, size: integer) = {
+    total: integer = 0;
+    i: integer = 0;
+    for (i = 0; i < size; i++) {
+        total = total + values[i];
+    }
+    return total;
+}
+
+countdown: function void (n: integer) = {
+    while (n > 0) {
+        print n, " ";
+        n--;
+    }
+    print "liftoff!\n";
+}
+
+power: function integer (base: integer, exp: integer) = {
+    return base ^ exp;
+}
+
+// ---------- operators, precedence and expressions ----------
+expressions: function void () = {
+    a: integer = 1 + 2 * 3;
+    b: integer = (1 + 2) * 3;
+    c: integer = 10 - 4 - 3;
+    d: integer = 2 ^ 3 ^ 2;
+    e: integer = -count;
+    f: integer = 5 - -1;
+    g: boolean = !flag && (count > 10 || off);
+    h: boolean = a <= b == true;
+    k: integer = a = b = 5;
+    primes[0] = factorial(power(2, 3));
+    grid[1][2] = primes[0] + max(a, b);
+    a++;
+    b--;
+    print a, b, c, d;
+}
+
+// ---------- control flow ----------
+flow: function void () = {
+    x: integer = 0;
+    if (x == 0) if (flag) print "inner"; else print "dangling else";
+    for (;;) { }
+    for (x = 0; x < 3; x++) print x;
+    while (x > 0) x--;
+    { nested: integer = 1; { deeper: integer = nested + 1; } }
+    return;
+}
+
+main: function integer () = {
+    countdown(3);
+    print factorial(5), isEven(4), sum(primes, 5), "\n";
+    expressions();
+    flow();
+    return 0;
+}
